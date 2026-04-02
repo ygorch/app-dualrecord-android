@@ -42,28 +42,29 @@ class DualCamViewModel @Inject constructor(
     private var muxerDrainJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            cameraManager.isConcurrentSupported.collect { supported ->
-                _state.update { it.copy(isConcurrentSupported = supported) }
-                if (!supported) {
-                    _state.update { it.copy(errorMessage = "Seu dispositivo não suporta gravação dupla nativa. Operando em modo de câmera única.") }
-                }
-            }
-        }
-
         // Initialize available cameras and default aspect ratios
         val backCameras = cameraManager.getAvailableBackCameras()
         val defaultMainId = backCameras.firstOrNull() ?: "0"
         val defaultSubId = backCameras.filter { it != defaultMainId }.firstOrNull() ?: defaultMainId
 
-        _state.update {
-            it.copy(
-                availableCameras = backCameras,
-                mainCameraId = defaultMainId,
-                subCameraId = defaultSubId,
-                mainCameraAspectRatio = if (backCameras.isNotEmpty()) cameraManager.getPreviewAspectRatio(defaultMainId) else 16f/9f,
-                subCameraAspectRatio = if (backCameras.isNotEmpty()) cameraManager.getPreviewAspectRatio(defaultSubId) else 16f/9f
-            )
+        viewModelScope.launch {
+            cameraManager.isConcurrentSupported.collect { supported ->
+                // If not supported natively or we only have 1 back camera total
+                val needsFallback = !supported || backCameras.size < 2
+
+                _state.update {
+                    it.copy(
+                        isConcurrentSupported = supported,
+                        isSecondarySlotDisabled = needsFallback,
+                        hardwareLimitationMessage = if (needsFallback) "Limitação de Hardware: Gravação dupla com câmeras traseiras não suportada. O slot secundário foi desativado." else null,
+                        availableCameras = backCameras,
+                        mainCameraId = defaultMainId,
+                        subCameraId = defaultSubId,
+                        mainCameraAspectRatio = if (backCameras.isNotEmpty()) cameraManager.getPreviewAspectRatio(defaultMainId) else 16f/9f,
+                        subCameraAspectRatio = if (backCameras.isNotEmpty()) cameraManager.getPreviewAspectRatio(defaultSubId) else 16f/9f
+                    )
+                }
+            }
         }
     }
 
@@ -168,8 +169,8 @@ class DualCamViewModel @Inject constructor(
                     muxerMain?.prepare()
                 }
 
-                // SUB: 9:16 (Fallback logic if not concurrent is handled here by just not creating sub)
-                if (currentState.isConcurrentSupported) {
+                // SUB: 9:16 (Fallback logic if not concurrent or no secondary slot)
+                if (currentState.isConcurrentSupported && !currentState.isSecondarySlotDisabled) {
                     // Note: for 9:16 we usually swap width/height in config or use orientation hint.
                     // The MultiplexerEngine handles orientationHint, so config is same physical dimensions.
                     val subVideoConfig = VideoCodecConfig(width, height, fps)

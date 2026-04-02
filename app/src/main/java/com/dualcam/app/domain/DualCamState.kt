@@ -24,5 +24,9 @@ data class DualCamState(
     val selectedResolution: String = "1080p", // 720p, 1080p, 1440p, 2160p
     val selectedFps: Int = 30, // 24, 30, 48, 60
 
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+
+    // Hardware fallback state
+    val isSecondarySlotDisabled: Boolean = false,
+    val hardwareLimitationMessage: String? = null
 )

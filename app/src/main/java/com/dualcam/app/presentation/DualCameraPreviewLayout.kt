@@ -56,7 +56,7 @@ fun DualCameraPreviewLayout(
         }
 
         // --- 9:16 Slot (Sub) ---
-        if (state.isConcurrentSupported) {
+        if (state.isConcurrentSupported && !state.isSecondarySlotDisabled) {
             // Determine animated modifier parameters
             // Width: Full width when split, PIP width when PIP
             val subWidth by animateDpAsState(

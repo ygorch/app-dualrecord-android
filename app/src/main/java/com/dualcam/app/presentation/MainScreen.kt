@@ -37,9 +37,21 @@ fun MainScreen(viewModel: DualCamViewModel = hiltViewModel()) {
                 availableCameras = state.availableCameras,
                 mainCameraId = state.mainCameraId,
                 subCameraId = state.subCameraId,
+                isSecondarySlotDisabled = state.isSecondarySlotDisabled,
                 onMainCameraSelect = { viewModel.onIntent(DualCamIntent.SelectMainCamera(it)) },
                 onSubCameraSelect = { viewModel.onIntent(DualCamIntent.SelectSubCamera(it)) }
             )
+
+            // Hardware Limitation Snackbar
+            if (state.hardwareLimitationMessage != null) {
+                Snackbar(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(16.dp)
+                ) {
+                    Text(state.hardwareLimitationMessage!!)
+                }
+            }
 
             // Error Snackbar
             if (state.errorMessage != null) {
@@ -70,6 +82,7 @@ fun ControlsOverlay(
     availableCameras: List<String>,
     mainCameraId: String,
     subCameraId: String,
+    isSecondarySlotDisabled: Boolean,
     onMainCameraSelect: (String) -> Unit,
     onSubCameraSelect: (String) -> Unit
 ) {
@@ -92,12 +105,14 @@ fun ControlsOverlay(
                 onCameraSelect = onMainCameraSelect
             )
 
-            CameraSelector(
-                label = "Sub (9:16)",
-                selectedCameraId = subCameraId,
-                availableCameras = availableCameras,
-                onCameraSelect = onSubCameraSelect
-            )
+            if (!isSecondarySlotDisabled) {
+                CameraSelector(
+                    label = "Sub (9:16)",
+                    selectedCameraId = subCameraId,
+                    availableCameras = availableCameras,
+                    onCameraSelect = onSubCameraSelect
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))

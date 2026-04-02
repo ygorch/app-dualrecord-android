@@ -45,17 +45,56 @@ class DualCameraManager @Inject constructor(
     }
 
     private fun checkConcurrencySupport() {
+        var isSupported = false
         val hasFeature = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_CONCURRENT)
+
         if (hasFeature) {
             try {
                 val concurrentCameraIds = cameraManager.concurrentCameraIds
-                _isConcurrentSupported.value = concurrentCameraIds.isNotEmpty()
+                // Check if any of the concurrent pairs are both back cameras
+                for (pair in concurrentCameraIds) {
+                    var bothBack = true
+                    for (id in pair) {
+                        val characteristics = cameraManager.getCameraCharacteristics(id)
+                        if (characteristics.get(CameraCharacteristics.LENS_FACING) != CameraCharacteristics.LENS_FACING_BACK) {
+                            bothBack = false
+                            break
+                        }
+                    }
+                    if (bothBack) {
+                        isSupported = true
+                        break
+                    }
+                }
             } catch (e: Exception) {
-                _isConcurrentSupported.value = false
+                Log.e("CameraManager", "Error checking concurrent pairs", e)
             }
-        } else {
-            _isConcurrentSupported.value = false
         }
+
+        // If not supported via concurrent API pairs, check for Logical Multi-Camera
+        if (!isSupported) {
+            try {
+                for (id in cameraManager.cameraIdList) {
+                    val characteristics = cameraManager.getCameraCharacteristics(id)
+                    val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+                    if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+                        val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+                        val isLogical = capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) == true
+                        if (isLogical) {
+                            val physicalIds = characteristics.physicalCameraIds
+                            if (physicalIds.size >= 2) {
+                                isSupported = true
+                                break
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                 Log.e("CameraManager", "Error checking logical multi camera", e)
+            }
+        }
+
+        _isConcurrentSupported.value = isSupported
     }
 
     /**
@@ -140,19 +179,27 @@ class DualCameraManager @Inject constructor(
     }
 
     fun getAvailableBackCameras(): List<String> {
-        val backCameras = mutableListOf<String>()
+        val backCameras = mutableSetOf<String>()
         try {
             for (id in cameraManager.cameraIdList) {
                 val characteristics = cameraManager.getCameraCharacteristics(id)
                 val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+                // Filter STRICTLY for back cameras
                 if (facing == CameraCharacteristics.LENS_FACING_BACK) {
                     backCameras.add(id)
+
+                    val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+                    val isLogical = capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) == true
+                    if (isLogical) {
+                        val physicalIds = characteristics.physicalCameraIds
+                        backCameras.addAll(physicalIds)
+                    }
                 }
             }
         } catch (e: Exception) {
             Log.e("CameraManager", "Error getting back cameras", e)
         }
-        return backCameras
+        return backCameras.toList()
     }
 
     fun getPreviewAspectRatio(cameraId: String): Float {

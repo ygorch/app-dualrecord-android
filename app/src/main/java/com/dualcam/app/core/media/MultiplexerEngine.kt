@@ -31,6 +31,7 @@ class MultiplexerEngine(
 
     private val bufferInfo = MediaCodec.BufferInfo()
     private var isEncoding = false
+    private var hasWrittenFirstSample = false
 
     // The surface provided to Camera2 API for the video encoder to read frames
     var inputSurface: Surface? = null
@@ -129,6 +130,7 @@ class MultiplexerEngine(
                         encodedData.limit(bufferInfo.offset + bufferInfo.size)
                         val trackIndex = if (isVideo) videoTrackIndex else audioTrackIndex
                         muxer?.writeSampleData(trackIndex, encodedData, bufferInfo)
+                        hasWrittenFirstSample = true
                     }
                 }
                 encoder.releaseOutputBuffer(encoderStatus, false)
@@ -149,14 +151,31 @@ class MultiplexerEngine(
         // Let drain finish (in a real app we wait for EOS flag, but keeping MVP simple)
         Thread.sleep(100)
 
-        videoEncoder?.stop()
-        videoEncoder?.release()
-        audioEncoder?.stop()
-        audioEncoder?.release()
+        try {
+            videoEncoder?.stop()
+        } catch (e: IllegalStateException) { Log.e("Muxer", "Error stopping videoEncoder", e) }
+        try {
+            videoEncoder?.release()
+        } catch (e: IllegalStateException) { Log.e("Muxer", "Error releasing videoEncoder", e) }
+
+        try {
+            audioEncoder?.stop()
+        } catch (e: IllegalStateException) { Log.e("Muxer", "Error stopping audioEncoder", e) }
+        try {
+            audioEncoder?.release()
+        } catch (e: IllegalStateException) { Log.e("Muxer", "Error releasing audioEncoder", e) }
 
         if (isMuxerStarted) {
-            muxer?.stop()
-            muxer?.release()
+            if (hasWrittenFirstSample) {
+                try {
+                    muxer?.stop()
+                } catch (e: IllegalStateException) { Log.e("Muxer", "Error stopping muxer", e) }
+            } else {
+                Log.w("Muxer", "Muxer started but no samples written. Discarding output.")
+            }
+            try {
+                muxer?.release()
+            } catch (e: IllegalStateException) { Log.e("Muxer", "Error releasing muxer", e) }
             isMuxerStarted = false
         }
 
