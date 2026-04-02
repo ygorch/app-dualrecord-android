@@ -25,7 +25,7 @@ import com.dualcam.app.domain.LayoutMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: DualCamViewModel = hiltViewModel()) {
+fun PremiumCameraScreen(viewModel: CameraSelectionViewModel = hiltViewModel()) {
     RequirePermissions {
         val state by viewModel.state.collectAsState()
 

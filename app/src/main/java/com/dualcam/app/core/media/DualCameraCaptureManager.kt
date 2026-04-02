@@ -28,7 +28,7 @@ import javax.inject.Singleton
  * Manages Camera2 API for concurrent dual-streaming via Logical Multi-Camera.
  */
 @Singleton
-class DualCameraManager @Inject constructor(
+class DualCameraCaptureManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager

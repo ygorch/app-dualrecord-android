@@ -20,12 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.dualcam.app.domain.DualCamState
 import com.dualcam.app.domain.LayoutMode
-import com.dualcam.app.core.media.DualCameraManager.PhysicalStreamConfig
+import com.dualcam.app.core.media.DualCameraCaptureManager.PhysicalStreamConfig
 
 @Composable
 fun DualCameraPreviewLayout(
     state: DualCamState,
-    viewModel: DualCamViewModel
+    viewModel: CameraSelectionViewModel
 ) {
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
