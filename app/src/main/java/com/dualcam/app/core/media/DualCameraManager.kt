@@ -11,6 +11,10 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
+import android.hardware.camera2.CameraCharacteristics
+import android.graphics.ImageFormat
+import android.util.Size
+import java.util.Collections
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -133,5 +137,48 @@ class DualCameraManager @Inject constructor(
     fun closeAll() {
         val keys = activeCameras.keys.toList()
         keys.forEach { closeCamera(it) }
+    }
+
+    fun getAvailableBackCameras(): List<String> {
+        val backCameras = mutableListOf<String>()
+        try {
+            for (id in cameraManager.cameraIdList) {
+                val characteristics = cameraManager.getCameraCharacteristics(id)
+                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+                if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    backCameras.add(id)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("CameraManager", "Error getting back cameras", e)
+        }
+        return backCameras
+    }
+
+    fun getPreviewAspectRatio(cameraId: String): Float {
+        try {
+            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+            val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            if (map != null) {
+                val sizes = map.getOutputSizes(android.graphics.SurfaceTexture::class.java)
+                if (sizes != null && sizes.isNotEmpty()) {
+                    // Usually find the largest 16:9 or use the largest available
+                    val largest = Collections.max(sizes.toList(), CompareSizesByArea())
+                    // Landscape aspect ratio Width/Height
+                    return largest.width.toFloat() / largest.height.toFloat()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("CameraManager", "Error getting preview aspect ratio", e)
+        }
+        return 4f / 3f // default fallback
+    }
+
+}
+
+internal class CompareSizesByArea : Comparator<Size> {
+    override fun compare(lhs: Size, rhs: Size): Int {
+        // We cast here to ensure the multiplications won't overflow
+        return java.lang.Long.signum(lhs.width.toLong() * lhs.height - rhs.width.toLong() * rhs.height)
     }
 }

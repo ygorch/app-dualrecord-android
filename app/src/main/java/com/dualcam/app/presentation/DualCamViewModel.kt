@@ -50,6 +50,21 @@ class DualCamViewModel @Inject constructor(
                 }
             }
         }
+
+        // Initialize available cameras and default aspect ratios
+        val backCameras = cameraManager.getAvailableBackCameras()
+        val defaultMainId = backCameras.firstOrNull() ?: "0"
+        val defaultSubId = backCameras.filter { it != defaultMainId }.firstOrNull() ?: defaultMainId
+
+        _state.update {
+            it.copy(
+                availableCameras = backCameras,
+                mainCameraId = defaultMainId,
+                subCameraId = defaultSubId,
+                mainCameraAspectRatio = if (backCameras.isNotEmpty()) cameraManager.getPreviewAspectRatio(defaultMainId) else 16f/9f,
+                subCameraAspectRatio = if (backCameras.isNotEmpty()) cameraManager.getPreviewAspectRatio(defaultSubId) else 16f/9f
+            )
+        }
     }
 
     fun onIntent(intent: DualCamIntent) {
@@ -57,11 +72,72 @@ class DualCamViewModel @Inject constructor(
             is DualCamIntent.ChangeLayoutMode -> _state.update { it.copy(layoutMode = intent.mode) }
             is DualCamIntent.ChangeResolution -> _state.update { it.copy(selectedResolution = intent.resolution) }
             is DualCamIntent.ChangeFps -> _state.update { it.copy(selectedFps = intent.fps) }
-            is DualCamIntent.SelectMainCamera -> _state.update { it.copy(mainCameraId = intent.id) }
-            is DualCamIntent.SelectSubCamera -> _state.update { it.copy(subCameraId = intent.id) }
+            is DualCamIntent.SelectMainCamera -> handleSelectMainCamera(intent.id)
+            is DualCamIntent.SelectSubCamera -> handleSelectSubCamera(intent.id)
             is DualCamIntent.StartRecording -> startRecording()
             is DualCamIntent.StopRecording -> stopRecording()
             is DualCamIntent.DismissError -> _state.update { it.copy(errorMessage = null) }
+        }
+    }
+
+
+    private fun handleSelectMainCamera(newMainId: String) {
+        val currentState = _state.value
+        if (newMainId == currentState.mainCameraId) return
+
+        val newAspectRatio = cameraManager.getPreviewAspectRatio(newMainId)
+
+        // Mutual exclusion: if new main is same as current sub, change sub
+        if (newMainId == currentState.subCameraId) {
+            val availableForSub = currentState.availableCameras.filter { it != newMainId }
+            val newSubId = availableForSub.firstOrNull() ?: newMainId
+            val newSubAspectRatio = if (newSubId == newMainId) newAspectRatio else cameraManager.getPreviewAspectRatio(newSubId)
+
+            _state.update {
+                it.copy(
+                    mainCameraId = newMainId,
+                    mainCameraAspectRatio = newAspectRatio,
+                    subCameraId = newSubId,
+                    subCameraAspectRatio = newSubAspectRatio
+                )
+            }
+        } else {
+            _state.update {
+                it.copy(
+                    mainCameraId = newMainId,
+                    mainCameraAspectRatio = newAspectRatio
+                )
+            }
+        }
+    }
+
+    private fun handleSelectSubCamera(newSubId: String) {
+        val currentState = _state.value
+        if (newSubId == currentState.subCameraId) return
+
+        val newAspectRatio = cameraManager.getPreviewAspectRatio(newSubId)
+
+        // Mutual exclusion: if new sub is same as current main, change main
+        if (newSubId == currentState.mainCameraId) {
+            val availableForMain = currentState.availableCameras.filter { it != newSubId }
+            val newMainId = availableForMain.firstOrNull() ?: newSubId
+            val newMainAspectRatio = if (newMainId == newSubId) newAspectRatio else cameraManager.getPreviewAspectRatio(newMainId)
+
+            _state.update {
+                it.copy(
+                    subCameraId = newSubId,
+                    subCameraAspectRatio = newAspectRatio,
+                    mainCameraId = newMainId,
+                    mainCameraAspectRatio = newMainAspectRatio
+                )
+            }
+        } else {
+            _state.update {
+                it.copy(
+                    subCameraId = newSubId,
+                    subCameraAspectRatio = newAspectRatio
+                )
+            }
         }
     }
 

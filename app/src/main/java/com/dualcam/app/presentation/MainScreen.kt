@@ -22,12 +22,8 @@ fun MainScreen(viewModel: DualCamViewModel = hiltViewModel()) {
 
         Box(modifier = Modifier.fillMaxSize()) {
 
-            // Layout logic
-            when (state.layoutMode) {
-                LayoutMode.PIP -> PiPLayout(viewModel, state.isConcurrentSupported)
-                LayoutMode.SPLIT_SCREEN -> SplitScreenLayout(viewModel, state.isConcurrentSupported)
-                LayoutMode.STACKED -> StackedLayout(viewModel, state.isConcurrentSupported)
-            }
+            // Dynamic layout that handles state and aspect ratios
+            DualCameraPreviewLayout(state = state, viewModel = viewModel)
 
             // Controls Overlay
             ControlsOverlay(
@@ -37,7 +33,12 @@ fun MainScreen(viewModel: DualCamViewModel = hiltViewModel()) {
                     if (state.isRecording) viewModel.onIntent(DualCamIntent.StopRecording)
                     else viewModel.onIntent(DualCamIntent.StartRecording)
                 },
-                onLayoutChange = { viewModel.onIntent(DualCamIntent.ChangeLayoutMode(it)) }
+                onLayoutChange = { viewModel.onIntent(DualCamIntent.ChangeLayoutMode(it)) },
+                availableCameras = state.availableCameras,
+                mainCameraId = state.mainCameraId,
+                subCameraId = state.subCameraId,
+                onMainCameraSelect = { viewModel.onIntent(DualCamIntent.SelectMainCamera(it)) },
+                onSubCameraSelect = { viewModel.onIntent(DualCamIntent.SelectSubCamera(it)) }
             )
 
             // Error Snackbar
@@ -59,116 +60,49 @@ fun MainScreen(viewModel: DualCamViewModel = hiltViewModel()) {
     }
 }
 
-@Composable
-fun PiPLayout(viewModel: DualCamViewModel, isConcurrentSupported: Boolean) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Main Camera (16:9) - Full Screen
-        CameraSurfaceView(
-            modifier = Modifier.fillMaxSize(),
-            onSurfaceCreated = { holder ->
-                // Delay opening to ensure surface is ready and we get state
-                val state = viewModel.state.value
-                viewModel.cameraManager.openCamera(
-                    cameraId = state.mainCameraId,
-                    previewSurface = holder.surface,
-                    recordingSurface = viewModel.getMainRecordingSurface(),
-                    onOpened = {}
-                )
-            },
-            onSurfaceDestroyed = {
-                viewModel.cameraManager.closeCamera(viewModel.state.value.mainCameraId)
-            }
-        )
-
-        // Sub Camera (9:16) - PiP
-        if (isConcurrentSupported) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-                    .width(120.dp)
-                    .height(213.dp) // 9:16 aspect ratio
-                    .background(Color.Black)
-            ) {
-                CameraSurfaceView(
-                    modifier = Modifier.fillMaxSize(),
-                    onSurfaceCreated = { holder ->
-                        val state = viewModel.state.value
-                        viewModel.cameraManager.openCamera(
-                            cameraId = state.subCameraId,
-                            previewSurface = holder.surface,
-                            recordingSurface = viewModel.getSubRecordingSurface(),
-                            onOpened = {}
-                        )
-                    },
-                    onSurfaceDestroyed = {
-                        viewModel.cameraManager.closeCamera(viewModel.state.value.subCameraId)
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SplitScreenLayout(viewModel: DualCamViewModel, isConcurrentSupported: Boolean) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            CameraSurfaceView(
-                modifier = Modifier.fillMaxSize(),
-                onSurfaceCreated = { holder ->
-                    viewModel.cameraManager.openCamera(
-                        cameraId = viewModel.state.value.mainCameraId,
-                        previewSurface = holder.surface,
-                        recordingSurface = viewModel.getMainRecordingSurface(),
-                        onOpened = {}
-                    )
-                },
-                onSurfaceDestroyed = {
-                    viewModel.cameraManager.closeCamera(viewModel.state.value.mainCameraId)
-                }
-            )
-        }
-        if (isConcurrentSupported) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                CameraSurfaceView(
-                    modifier = Modifier.fillMaxSize(),
-                    onSurfaceCreated = { holder ->
-                        viewModel.cameraManager.openCamera(
-                            cameraId = viewModel.state.value.subCameraId,
-                            previewSurface = holder.surface,
-                            recordingSurface = viewModel.getSubRecordingSurface(),
-                            onOpened = {}
-                        )
-                    },
-                    onSurfaceDestroyed = {
-                        viewModel.cameraManager.closeCamera(viewModel.state.value.subCameraId)
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun StackedLayout(viewModel: DualCamViewModel, isConcurrentSupported: Boolean) {
-    // Similar to PiP for MVP simplicity, just demonstrating dynamic switching
-    PiPLayout(viewModel, isConcurrentSupported)
-}
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ControlsOverlay(
     modifier: Modifier = Modifier,
     isRecording: Boolean,
     onRecordClick: () -> Unit,
-    onLayoutChange: (LayoutMode) -> Unit
+    onLayoutChange: (LayoutMode) -> Unit,
+    availableCameras: List<String>,
+    mainCameraId: String,
+    subCameraId: String,
+    onMainCameraSelect: (String) -> Unit,
+    onSubCameraSelect: (String) -> Unit
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 32.dp),
+            .background(Color.Black.copy(alpha = 0.5f))
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Camera Selectors
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            CameraSelector(
+                label = "Main (16:9)",
+                selectedCameraId = mainCameraId,
+                availableCameras = availableCameras,
+                onCameraSelect = onMainCameraSelect
+            )
+
+            CameraSelector(
+                label = "Sub (9:16)",
+                selectedCameraId = subCameraId,
+                availableCameras = availableCameras,
+                onCameraSelect = onSubCameraSelect
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Layout Controls
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -176,7 +110,10 @@ fun ControlsOverlay(
             Button(onClick = { onLayoutChange(LayoutMode.PIP) }) { Text("PiP") }
             Button(onClick = { onLayoutChange(LayoutMode.SPLIT_SCREEN) }) { Text("Split") }
         }
+
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Record Button
         Button(
             onClick = onRecordClick,
             colors = ButtonDefaults.buttonColors(
@@ -184,6 +121,46 @@ fun ControlsOverlay(
             )
         ) {
             Text(if (isRecording) "Stop Recording" else "Start Recording")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CameraSelector(
+    label: String,
+    selectedCameraId: String,
+    availableCameras: List<String>,
+    onCameraSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = Modifier.width(140.dp)
+    ) {
+        OutlinedTextField(
+            value = "Cam $selectedCameraId",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            availableCameras.forEach { id ->
+                DropdownMenuItem(
+                    text = { Text("Camera $id") },
+                    onClick = {
+                        onCameraSelect(id)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }
