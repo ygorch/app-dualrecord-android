@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Camera Permissions -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Audio Permissions -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- We do not need WRITE_EXTERNAL_STORAGE for scoped storage (Android 10+),
+         we use MediaStore. -->
+
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.camera.concurrent"
+        android:required="false" />
+
+    <application
+        android:name=".DualCamApp"
+        android:allowBackup="true"
+        android:label="DualCam MVP"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.DualCamMVP">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.DualCamMVP">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
