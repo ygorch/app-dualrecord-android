@@ -42,11 +42,28 @@ class DualCamViewModel @Inject constructor(
     private var muxerDrainJob: Job? = null
 
     init {
+        val logicalId = cameraManager.getLogicalBackCameraId()
+        val physicalCameras = logicalId?.let { cameraManager.getPhysicalBackCameras(it) } ?: emptyList()
+
+        val defaultMainId = physicalCameras.firstOrNull() ?: "0"
+        val defaultSubId = physicalCameras.filter { it != defaultMainId }.firstOrNull() ?: defaultMainId
+
         viewModelScope.launch {
-            cameraManager.isConcurrentSupported.collect { supported ->
-                _state.update { it.copy(isConcurrentSupported = supported) }
-                if (!supported) {
-                    _state.update { it.copy(errorMessage = "Seu dispositivo não suporta gravação dupla nativa. Operando em modo de câmera única.") }
+            cameraManager.isLogicalMultiCameraSupported.collect { supported ->
+                val needsFallback = !supported || physicalCameras.size < 2
+
+                _state.update {
+                    it.copy(
+                        isLogicalMultiCameraSupported = supported,
+                        logicalCameraId = logicalId,
+                        availablePhysicalCameras = physicalCameras,
+                        isSecondarySlotDisabled = needsFallback,
+                        hardwareLimitationMessage = if (needsFallback) "Hardware Limit: Native dual logical back-camera recording not supported." else null,
+                        mainCameraId = defaultMainId,
+                        subCameraId = defaultSubId,
+                        mainCameraAspectRatio = if (physicalCameras.isNotEmpty()) cameraManager.getPreviewAspectRatio(defaultMainId) else 16f/9f,
+                        subCameraAspectRatio = if (physicalCameras.isNotEmpty()) cameraManager.getPreviewAspectRatio(defaultSubId) else 16f/9f
+                    )
                 }
             }
         }
@@ -57,11 +74,72 @@ class DualCamViewModel @Inject constructor(
             is DualCamIntent.ChangeLayoutMode -> _state.update { it.copy(layoutMode = intent.mode) }
             is DualCamIntent.ChangeResolution -> _state.update { it.copy(selectedResolution = intent.resolution) }
             is DualCamIntent.ChangeFps -> _state.update { it.copy(selectedFps = intent.fps) }
-            is DualCamIntent.SelectMainCamera -> _state.update { it.copy(mainCameraId = intent.id) }
-            is DualCamIntent.SelectSubCamera -> _state.update { it.copy(subCameraId = intent.id) }
+            is DualCamIntent.SelectMainCamera -> handleSelectMainCamera(intent.id)
+            is DualCamIntent.SelectSubCamera -> handleSelectSubCamera(intent.id)
             is DualCamIntent.StartRecording -> startRecording()
             is DualCamIntent.StopRecording -> stopRecording()
             is DualCamIntent.DismissError -> _state.update { it.copy(errorMessage = null) }
+        }
+    }
+
+
+    private fun handleSelectMainCamera(newMainId: String) {
+        val currentState = _state.value
+        if (newMainId == currentState.mainCameraId) return
+
+        val newAspectRatio = cameraManager.getPreviewAspectRatio(newMainId)
+
+        // Mutual exclusion: if new main is same as current sub, change sub
+        if (newMainId == currentState.subCameraId) {
+            val availableForSub = currentState.availablePhysicalCameras.filter { it != newMainId }
+            val newSubId = availableForSub.firstOrNull() ?: newMainId
+            val newSubAspectRatio = if (newSubId == newMainId) newAspectRatio else cameraManager.getPreviewAspectRatio(newSubId)
+
+            _state.update {
+                it.copy(
+                    mainCameraId = newMainId,
+                    mainCameraAspectRatio = newAspectRatio,
+                    subCameraId = newSubId,
+                    subCameraAspectRatio = newSubAspectRatio
+                )
+            }
+        } else {
+            _state.update {
+                it.copy(
+                    mainCameraId = newMainId,
+                    mainCameraAspectRatio = newAspectRatio
+                )
+            }
+        }
+    }
+
+    private fun handleSelectSubCamera(newSubId: String) {
+        val currentState = _state.value
+        if (newSubId == currentState.subCameraId) return
+
+        val newAspectRatio = cameraManager.getPreviewAspectRatio(newSubId)
+
+        // Mutual exclusion: if new sub is same as current main, change main
+        if (newSubId == currentState.mainCameraId) {
+            val availableForMain = currentState.availablePhysicalCameras.filter { it != newSubId }
+            val newMainId = availableForMain.firstOrNull() ?: newSubId
+            val newMainAspectRatio = if (newMainId == newSubId) newAspectRatio else cameraManager.getPreviewAspectRatio(newMainId)
+
+            _state.update {
+                it.copy(
+                    subCameraId = newSubId,
+                    subCameraAspectRatio = newAspectRatio,
+                    mainCameraId = newMainId,
+                    mainCameraAspectRatio = newMainAspectRatio
+                )
+            }
+        } else {
+            _state.update {
+                it.copy(
+                    subCameraId = newSubId,
+                    subCameraAspectRatio = newAspectRatio
+                )
+            }
         }
     }
 
@@ -92,8 +170,8 @@ class DualCamViewModel @Inject constructor(
                     muxerMain?.prepare()
                 }
 
-                // SUB: 9:16 (Fallback logic if not concurrent is handled here by just not creating sub)
-                if (currentState.isConcurrentSupported) {
+                // SUB: 9:16 (Fallback logic if not concurrent or no secondary slot)
+                if (currentState.isLogicalMultiCameraSupported && !currentState.isSecondarySlotDisabled) {
                     // Note: for 9:16 we usually swap width/height in config or use orientation hint.
                     // The MultiplexerEngine handles orientationHint, so config is same physical dimensions.
                     val subVideoConfig = VideoCodecConfig(width, height, fps)
