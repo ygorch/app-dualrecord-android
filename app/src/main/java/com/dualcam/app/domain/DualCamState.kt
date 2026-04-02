@@ -7,18 +7,19 @@ enum class LayoutMode {
 }
 
 data class DualCamState(
-    val isConcurrentSupported: Boolean = false,
+    val isLogicalMultiCameraSupported: Boolean = false,
     val isRecording: Boolean = false,
     val layoutMode: LayoutMode = LayoutMode.PIP,
 
-    val availableCameras: List<String> = emptyList(),
+    val logicalCameraId: String? = null,
+    val availablePhysicalCameras: List<String> = emptyList(),
 
-    // 16:9 slot configuration
-    val mainCameraId: String = "0", // Usually back camera
+    // 16:9 slot configuration (stores physical ID)
+    val mainCameraId: String = "0",
     val mainCameraAspectRatio: Float = 16f/9f,
 
-    // 9:16 slot configuration
-    val subCameraId: String = "1",  // Usually front camera
+    // 9:16 slot configuration (stores physical ID)
+    val subCameraId: String = "1",
     val subCameraAspectRatio: Float = 16f/9f,
 
     val selectedResolution: String = "1080p", // 720p, 1080p, 1440p, 2160p

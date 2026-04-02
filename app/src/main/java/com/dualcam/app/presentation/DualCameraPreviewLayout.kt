@@ -1,5 +1,7 @@
 package com.dualcam.app.presentation
 
+import android.view.Surface
+import android.view.SurfaceHolder
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -18,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.dualcam.app.domain.DualCamState
 import com.dualcam.app.domain.LayoutMode
+import com.dualcam.app.core.media.DualCameraManager.PhysicalStreamConfig
 
 @Composable
 fun DualCameraPreviewLayout(
@@ -30,10 +33,51 @@ fun DualCameraPreviewLayout(
 
     val isSplitScreen = state.layoutMode == LayoutMode.SPLIT_SCREEN
 
+    // We need to collect both surfaces before opening the logical camera
+    var mainSurface by remember { mutableStateOf<Surface?>(null) }
+    var subSurface by remember { mutableStateOf<Surface?>(null) }
+
+    // Launch camera when surfaces and configuration changes
+    LaunchedEffect(
+        mainSurface, subSurface,
+        state.mainCameraId, state.subCameraId,
+        state.logicalCameraId, state.isSecondarySlotDisabled,
+        viewModel.state.value.isRecording // re-trigger on record state change to pass recording surface
+    ) {
+        val logicalId = state.logicalCameraId
+        if (logicalId != null && mainSurface != null) {
+            val mainConfig = PhysicalStreamConfig(
+                physicalCameraId = state.mainCameraId,
+                previewSurface = mainSurface!!,
+                recordingSurface = viewModel.getMainRecordingSurface()
+            )
+
+            val subConfig = if (!state.isSecondarySlotDisabled && subSurface != null) {
+                PhysicalStreamConfig(
+                    physicalCameraId = state.subCameraId,
+                    previewSurface = subSurface!!,
+                    recordingSurface = viewModel.getSubRecordingSurface()
+                )
+            } else null
+
+            viewModel.cameraManager.openLogicalCamera(
+                logicalCameraId = logicalId,
+                mainConfig = mainConfig,
+                subConfig = subConfig,
+                onOpened = {}
+            )
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.cameraManager.closeAll()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
         // --- 16:9 Slot (Main) ---
-        // Animate height to half screen when split
         val mainHeightFraction by animateFloatAsState(
             targetValue = if (isSplitScreen) 0.5f else 1f,
             animationSpec = tween(500)
@@ -47,30 +91,25 @@ fun DualCameraPreviewLayout(
                 .background(Color.DarkGray)
         ) {
             CameraPreviewContainer(
-                cameraId = state.mainCameraId,
                 previewAspectRatio = state.mainCameraAspectRatio,
                 targetAspectRatio = 16f / 9f,
-                viewModel = viewModel,
-                isMain = true
+                onSurfaceReady = { mainSurface = it },
+                onSurfaceDestroyed = { mainSurface = null }
             )
         }
 
         // --- 9:16 Slot (Sub) ---
-        if (state.isConcurrentSupported && !state.isSecondarySlotDisabled) {
-            // Determine animated modifier parameters
-            // Width: Full width when split, PIP width when PIP
+        if (state.isLogicalMultiCameraSupported && !state.isSecondarySlotDisabled) {
             val subWidth by animateDpAsState(
                 targetValue = if (isSplitScreen) screenWidth else 120.dp,
                 animationSpec = tween(500)
             )
-            // Height: Half screen when split, PIP height when PIP
             val subHeight by animateDpAsState(
                 targetValue = if (isSplitScreen) screenHeight * 0.5f else 213.dp,
                 animationSpec = tween(500)
             )
-            // Padding from top/right
             val subPaddingTop by animateDpAsState(
-                targetValue = if (isSplitScreen) screenHeight * 0.5f else 32.dp,
+                targetValue = if (isSplitScreen) screenHeight * 0.5f else 64.dp, // Moved down slightly for HUD
                 animationSpec = tween(500)
             )
             val subPaddingEnd by animateDpAsState(
@@ -92,11 +131,10 @@ fun DualCameraPreviewLayout(
                         .background(Color.Black)
                 ) {
                     CameraPreviewContainer(
-                        cameraId = state.subCameraId,
                         previewAspectRatio = state.subCameraAspectRatio,
                         targetAspectRatio = if (isSplitScreen) 16f/9f else 9f/16f,
-                        viewModel = viewModel,
-                        isMain = false
+                        onSurfaceReady = { subSurface = it },
+                        onSurfaceDestroyed = { subSurface = null }
                     )
                 }
             }
@@ -106,11 +144,10 @@ fun DualCameraPreviewLayout(
 
 @Composable
 fun CameraPreviewContainer(
-    cameraId: String,
     previewAspectRatio: Float,
     targetAspectRatio: Float,
-    viewModel: DualCamViewModel,
-    isMain: Boolean
+    onSurfaceReady: (Surface) -> Unit,
+    onSurfaceDestroyed: () -> Unit
 ) {
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -146,15 +183,10 @@ fun CameraPreviewContainer(
                         scaleY = scaleY
                     ),
                 onSurfaceCreated = { holder ->
-                    viewModel.cameraManager.openCamera(
-                        cameraId = cameraId,
-                        previewSurface = holder.surface,
-                        recordingSurface = if (isMain) viewModel.getMainRecordingSurface() else viewModel.getSubRecordingSurface(),
-                        onOpened = {}
-                    )
+                    onSurfaceReady(holder.surface)
                 },
                 onSurfaceDestroyed = {
-                    viewModel.cameraManager.closeCamera(cameraId)
+                    onSurfaceDestroyed()
                 }
             )
         }
