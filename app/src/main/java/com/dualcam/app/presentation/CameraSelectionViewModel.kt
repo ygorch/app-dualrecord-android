@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dualcam.app.core.media.AudioCodecConfig
 import com.dualcam.app.core.media.AudioEngine
-import com.dualcam.app.core.media.DualCameraManager
+import com.dualcam.app.core.media.DualCameraCaptureManager
 import com.dualcam.app.core.media.MultiplexerEngine
 import com.dualcam.app.core.media.VideoCodecConfig
 import com.dualcam.app.core.storage.MediaStoreManager
@@ -23,8 +23,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class DualCamViewModel @Inject constructor(
-    val cameraManager: DualCameraManager, // Exposing for UI to bind Surface (simplified for MVP)
+class CameraSelectionViewModel @Inject constructor(
+    val cameraManager: DualCameraCaptureManager, // Exposing for UI to bind Surface (simplified for MVP)
     private val audioEngine: AudioEngine,
     private val mediaStoreManager: MediaStoreManager
 ) : ViewModel() {
